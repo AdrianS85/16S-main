@@ -1,0 +1,962 @@
+Pre-trimmed sequences are all 301 bases long
+
+We need to remove primers/adapters from sequence
+
+Use Figaro to establish where to cut sequences during DADA2
+
+Next, sequences were trimmed - adaptors removed and phred below 20 removed - 
+1) we can use this data for dada2 easly i think. Dada2 will cut poor quality sequences either way? 
+2) Do we need to uniformize sequence lenghts before dada? - yes
+3) number of duplicated sequences rised a bit after trimming, which should be ok, cause adapter-related technical variance is removed (some sequences had 0, 1, or 2 or smth nucleotides from adapters) and only super-similar 16 biological sequences are left.
+4) !!! sample F5_S19 has very small number of sequences, and we should probably remove it
+5) somewhere aroung 200 bp sample quality drops for many samples (moslty R2, except F5_S19, which we should remove either way). Most R1s are fine until 250-270bp - will dada be ok with this? - this will not float with dada. Dada calculates error scores for given base based on all the samples. We cannot have some samples having this base, and some dont. Just dont truncate paired reads to the point they dont share at least 20nt
+2
+int=${float%.*}
+
+
+
+
+conda activate qiime2-2020.8
+NB_OF_SAMPLES=33
+SAMPLING_DEPTH=58020
+MAX_RAREFACTION_DEPTH=100000
+# Keep naming consistent for this testing pipeline
+
+################################
+### INSTALL ADDITIONAL TOOLS ###
+################################
+
+mkdir qiime_analysis
+
+### Install additional plugins insige qiime enviroment
+### Install breakaway https://github.com/statdivlab/q2-breakaway ###
+conda install -c bioconda -c conda-forge bioconductor-phyloseq r-devtools r-tibble r-magrittr r-dplyr r-withr r-testthat r-praise unzip
+pip install git+https://github.com/statdivlab/q2-breakaway.git
+R -e 'Sys.setenv(TAR = "/bin/tar"); library(devtools); devtools::install_github("adw96/breakaway")' 
+qiime dev refresh-cache
+
+### Install deicode ###
+conda install -c conda-forge deicode
+
+### Install gemelli ###
+pip install gemelli
+
+### Install corncob ###
+conda install -c bioconda -c conda-forge bioconductor-phyloseq r-devtools r-magrittr r-dplyr r-vgam unzip
+conda install -c r r-tidyr
+pip install git+https://github.com/statdivlab/q2-corncob.git
+qiime dev refresh-cache
+
+### Install clawback ###
+conda install -c kaehler -c conda-forge q2-clawback
+
+### Install RESCRIPt ###
+conda install -c conda-forge -c bioconda -c qiime2 -c defaults xmltodict
+pip install git+https://github.com/bokulich-lab/RESCRIPt.git
+
+### Install SCNIC ###
+conda install -q scnic
+pip install git+https://github.com/lozuponelab/q2-SCNIC.git
+qiime dev refresh-cache
+conda install fastspar?
+conda install -c bioconda -c conda-forge fastspar
+
+################################
+### INSTALL ADDITIONAL TOOLS ###
+################################
+
+
+
+
+
+
+
+
+####################################
+### ESTABLISH TRUNCATION LENGHTS ###
+####################################
+
+### Install docker (https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository) and figaro ###
+#AMPLICONLENGTH = i think [ (785-341) - FPrimerLenght - RPrimerLenght ] cause actual sequencing starts where primer ends, and primer starts where its nucleotide identifier is
+#It needs to be run separatly for each sequencing run
+
+git clone https://github.com/Zymo-Research/figaro.git
+cd figaro
+sudo docker build -t figaro .
+
+sudo docker container run --rm \
+	-e AMPLICONLENGTH=428 \
+	-e FORWARDPRIMERLENGTH=17 \
+	-e REVERSEPRIMERLENGTH=21 \
+	-v /home/adrian/Desktop/qiime/raw:/data/input \
+	-v /home/adrian/Desktop/qiime/raw_figaro:/data/output \
+	figaro
+
+# Figaro returned best truncate length: F 268, R 218
+
+sudo docker container run --rm \
+	-e AMPLICONLENGTH=444 \
+	-e FORWARDPRIMERLENGTH=17 \
+	-e REVERSEPRIMERLENGTH=21 \
+	-v /home/adrian/Desktop/qiime/raw:/data/input \
+	-v /home/adrian/Desktop/qiime/raw_figaro_444:/data/output \
+	figaro
+# Figaro returned best truncate length: F 262, R 240
+ 
+sudo docker container run --rm \
+	-e AMPLICONLENGTH=428 \
+	-e FORWARDPRIMERLENGTH=17 \
+	-e REVERSEPRIMERLENGTH=21 \
+	-e MINIMUMOVERLAP=30 \
+	-v /home/adrian/Desktop/qiime/raw:/data/input \
+	-v /home/adrian/Desktop/qiime/raw_figaro_30:/data/output \
+	figaro
+# Figaro returned best truncate length: F 256, R 240
+
+####################################
+### ESTABLISH TRUNCATION LENGHTS ###
+####################################
+
+
+
+
+
+mkdir data_q
+mkdir data_q/vis
+mkdir data_q/temp
+mkdir data_q/temp/vis
+
+######################
+### Check metadata ###
+######################
+
+qiime metadata tabulate \
+	--m-input-file qiime_metadata.tsv \
+	--o-visualization data_q/vis/qiime_metadata.qzv 
+
+######################
+### Check metadata ###
+######################
+
+
+
+
+
+####################
+### IMPORT INPUT ###
+####################
+
+qiime tools import \
+	--type 'SampleData[PairedEndSequencesWithQuality]' \
+	--input-path qiime_manifest.tsv \
+	--output-path data_q/primary_input.qza \
+	--input-format PairedEndFastqManifestPhred33V2
+
+####################
+### IMPORT INPUT ###
+####################
+
+
+
+
+
+
+
+#################
+### DENOISING ###
+#################
+
+#############
+### DADA2 ###
+
+### LONG STEP
+qiime dada2 denoise-paired \
+	--i-demultiplexed-seqs data_q/primary_input.qza \
+	--p-trim-left-f 17 \
+	--p-trim-left-r 21 \
+	--p-trunc-len-f 268 \
+	--p-trunc-len-r 218 \
+	--p-max-ee-f 2 \
+	--p-max-ee-r 2 \
+	--p-pooling-method 'pseudo' \
+	--p-chimera-method 'consensus' \
+	--p-n-threads 3 \
+	--p-no-hashed-feature-ids \
+	--o-table data_q/dada2_FeatureTable[Frequency].qza \
+	--o-representative-sequences data_q/dada2_FeatureData[Sequence].qza \
+	--o-denoising-stats data_q/vis/dada2_SampleData[DADA2Stats].qza \
+	--verbose
+
+### DADA2 ###
+#############
+
+
+
+##############
+### DEBLUR ###
+
+qiime cutadapt trim-paired \
+	--i-demultiplexed-sequences data_q/primary_input.qza \
+	--p-cores 3 \
+	--p-front-f CCTACGGGNGGCWGCAG \
+	--p-front-r GACTACHVGGGTATCTAATCC \
+	--p-adapter-f GGATTAGATACCCBDGTAGTC \
+	--p-adapter-r CTGCWGCCNCCCGTAGG \
+	--p-match-adapter-wildcards True \
+	--p-discard-untrimmed True \
+	--o-trimmed-sequences data_q/temp/noadapter_for_deblur_SampleData[PairedEndSequencesWithQuality].qza \
+	--verbose > data_q/temp/vis/report_noadapter_for_deblur_SampleData[PairedEndSequencesWithQuality]
+
+
+
+qiime vsearch join-pairs \
+	--i-demultiplexed-seqs data_q/temp/noadapter_for_deblur_SampleData[PairedEndSequencesWithQuality].qza \
+	--p-threads 4 \
+	--p-minovlen 110 \
+	--p-maxdiffs 20 \
+	--o-joined-sequences data_q/temp/joined_noadapter_for_deblur_SampleData[JoinedSequencesWithQuality].qza \
+	--verbose &> data_q/temp/vis/report_joined_noadapter_for_deblur_SampleData[JoinedSequencesWithQuality]
+
+
+
+qiime quality-filter q-score \
+	--i-demux data_q/temp/joined_noadapter_for_deblur_SampleData[JoinedSequencesWithQuality].qza \
+	--o-filtered-sequences data_q/temp/qa_joined_noadapter_for_deblur_SampleData[SequencesWithQuality].qza \
+	--o-filter-stats data_q/temp/vis/qa_joined_noadapter_for_deblur_QualityFilterStats.qza
+
+
+
+### Denoise normal ###
+qiime deblur denoise-16S \
+	--i-demultiplexed-seqs data_q/temp/qa_joined_noadapter_for_deblur_SampleData[SequencesWithQuality].qza \
+	--p-trim-length 401 \
+	--p-left-trim-len 0 \
+	--p-sample-stats True \
+	--p-jobs-to-start 4 \
+	--p-no-hashed-feature-ids \
+	--o-table data_q/deblur_FeatureTable[Frequency].qza \
+	--o-representative-sequences data_q/deblur_FeatureData[Sequence].qza \
+	--o-stats data_q/vis/deblur_SampleData[DeblurStats].qza
+
+
+
+### Denoise with singletons LONG STEP ###
+qiime deblur denoise-16S \
+	--i-demultiplexed-seqs qiime_analysis/qa_joined_noadapter_for_deblur_SampleData[SequencesWithQuality].qza \
+	--p-min-reads 1 \
+	--p-min-size 1 \
+	--p-trim-length 401 \
+	--p-left-trim-len 0 \
+	--p-sample-stats True \
+	--p-jobs-to-start 4 \
+	--p-no-hashed-feature-ids \
+	--o-table data_q/deblur_singletons_FeatureTable[Frequency].qza \
+	--o-representative-sequences data_q/deblur_singletons_FeatureData[Sequence].qza \
+	--o-stats data_q/vis/deblur_singletons_SampleData[DeblurStats].qza
+
+### DEBLUR ###
+##############
+
+
+
+#################
+### FILTERING ###
+
+ls data_q/*'FeatureTable[Frequency].qza' | sed 's/data_q\///' | sed 's/FeatureTable\[Frequency\]\.qza//' |  \
+sed 's/filtered_*//' | sort | uniq |  \
+parallel --joblog data_q/filter-features.log \
+" \
+qiime feature-table filter-features \
+	--i-table data_q/{}FeatureTable[Frequency] \
+	--p-min-frequency 10 \
+	--p-min-samples $((NB_OF_SAMPLES / 3)) \
+	--o-filtered-table data_q/filtered_{}FeatureTable[Frequency] \
+	
+qiime feature-table filter-seqs \
+	--i-data data_q/{}FeatureData[Sequence].qza \
+	--i-table data_q/filtered_{}FeatureTable[Frequency].qza \
+	--o-filtered-data data_q/filtered_{}FeatureData[Sequence].qza \
+"
+
+### FILTERING ###
+#################
+
+
+
+
+
+
+#################
+### PHYLOGENY ###
+# Needs already downloaded sepp-ref file
+
+ls data_q/filtered_*'FeatureData[Sequence].qza'  | sed 's/FeatureData\[Sequence\]\.qza//' | sed 's/data_q\/filtered_//' | \
+parallel --joblog phylogeny/phylogeny.log \
+" \
+qiime fragment-insertion sepp \
+	--i-representative-sequences data_q/{}FeatureData[Sequence].qza \
+	--i-reference-database phylogeny/sepp-refs-silva-128.qza \
+	--p-threads 4 \
+	--o-tree phylogeny/sepp_{}Phylogeny[Rooted].qza \
+	--o-placements phylogeny/sepp_{}Placements.qza \
+
+qiime fragment-insertion filter-features \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--i-tree phylogeny/sepp_{}Phylogeny[Rooted].qza \
+	--o-filtered-table data_q/sepp_{}FeatureTable[Frequency].qza \
+	--o-removed-table data_q/removed_sepp_{}FeatureTable[Frequency].qza \
+
+qiime feature-table filter-seqs \
+	--i-data data_q/{}FeatureData[Sequence].qza \
+	--i-table data_q/sepp_{}FeatureTable[Frequency].qza \
+	--o-filtered-data data_q/sepp_{}FeatureData[Sequence].qza \
+"
+
+### PHYLOGENY ###
+#################
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#######################
+### DATA EVALUATION ###
+
+ls data_q/temp/*'WithQuality].qza' | sed 's/data_q\/temp\///' | parallel "qiime demux summarize --i-data data_q/temp/{} --o-visualization data_q/temp/vis/{}" 
+
+ls data_q/*'FeatureData[Sequence].qza' | sed 's/data_q\///' | parallel "qiime feature-table tabulate-seqs --i-data data_q/{} --o-visualization data_q/vis/{}"
+
+ls data_q/*'FeatureTable[Frequency].qza' | sed 's/data_q\///' | parallel "qiime feature-table summarize --i-table data_q/{} --o-visualization data_q/vis/{}"
+
+parallel "qiime deblur visualize-stats --i-deblur-stats {} --o-visualization {}" ::: ls data_q/vis/*'SampleData[DeblurStats].qza'
+
+parallel "qiime metadata tabulate --m-input-file {} --o-visualization {}" ::: ls data_q/vis/*'SampleData[DADA2Stats].qza'
+
+mv data_q/removed_* data_q/temp
+
+### DATA EVALUATION ###
+#######################
+
+#################
+### DENOISING ###
+#################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mkdir taxonomy
+mkdir taxonomy/vis
+mkdir taxonomy/collapse
+mkdir taxonomy/collapse/vis
+################
+### TAXONOMY ###
+################
+
+### Taxonomic clasification ###
+# needs time
+# Do no-species annotation really decrease annotation quality?
+# i-query - FeatureData[Sequence]   ### from denoising
+# i-reference-reads - FeatureData[Sequence]  ### 
+# i-reference-taxonomy - FeatureData[Taxonomy]   ### 
+# o-classification - FeatureData[Taxonomy]
+# i-classifier - TaxonomicClassifier
+
+
+ls data_q/*'FeatureData[Sequence].qza'  | sed 's/FeatureData\[Sequence\]\.qza//' | sed 's/data_q\/filtered_//' | \
+parallel --joblog taxonomy/classify.log \
+"qiime feature-classifier classify-consensus-vsearch \
+	--i-query data_q/{}FeatureData[Sequence].qza \
+	--i-reference-reads prepare_taxonomy/nosp_silva-138.1-ssu-nr99-seqs-341f-785r-uniq.qza \
+	--i-reference-taxonomy prepare_taxonomy/nosp_silva-138.1-ssu-nr99-tax-341f-785r-derep-uniq.qza \
+	--p-threads 4 \
+	--o-classification taxonomy/vsearch_{}FeatureData[Taxonomy].qza" \
+
+qiime feature-classifier classify-sklearn \
+	--i-classifier prepare_taxonomy/gut-341f-785r-classifier.qza \
+	--i-reads data_q/{}_FeatureData[Sequence].qza \
+	--o-classification taxonomy/bespoke_n-b_{}FeatureData[Taxonomy].qza \
+	
+qiime taxa barplot \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--i-taxonomy taxonomy/vsearch_{}FeatureData[Taxonomy].qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--o-visualization taxonomy/vis/vsearch_{}FeatureData[Taxonomy].qzv \
+
+qiime taxa barplot \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--i-taxonomy taxonomy/bespoke_n-b_{}FeatureData[Taxonomy].qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--o-visualization taxonomy/vis/bespoke_n-b_{}FeatureData[Taxonomy].qzv \
+
+for LEV in 2 3 4 5 6 7 \
+do \
+qiime taxa collapse \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--i-taxonomy taxonomy/vsearch_{}FeatureData[Taxonomy].qza \
+	--p-level $LEV \
+	--o-collapsed-table taxonomy/collapse/'lev_'$LEV'_FeatureTable[Frequency].qza' \
+
+qiime taxa collapse \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--i-taxonomy taxonomy/vsearch_{}FeatureData[Taxonomy].qza \
+	--p-level $LEV \
+	--o-collapsed-table taxonomy/collapse/'lev_'$LEV'_FeatureTable[Frequency].qza' \
+done \
+"
+
+
+ls taxonomy/collapse/*'FeatureTable[Frequency].qza' | sed 's/taxonomy\/collapse\///' | \
+parallel "\
+qiime feature-table summarize \
+	--i-table taxonomy/collapse/{} \
+	--o-visualization taxonomy/collapse/vis/summarize_{} \
+# add looping over: --m-sample-metadata-column
+qiime feature-table heatmap \
+	--i-table taxonomy/collapse/{} \
+	--m-sample-metadata-file qiime_metadata.tsv \
+	--p-metric 'euclidean' \
+	--o-visualization taxonomy/collapse/vis/heatmap_euclidean_{} \
+
+qiime feature-table heatmap \
+	--i-table taxonomy/collapse/{} \
+	--m-sample-metadata-file qiime_metadata.tsv \
+	--p-metric 'jaccard' \
+	--o-visualization taxonomy/collapse/vis/heatmap_jaccard_{} \
+
+qiime feature-table heatmap \
+	--i-table taxonomy/collapse/{} \
+	--m-sample-metadata-file qiime_metadata.tsv \
+	--p-metric 'braycurtis' \
+	--o-visualization taxonomy/collapse/vis/heatmap_braycurtis_{} \
+
+
+"
+
+
+### Collapse data to given taxonomic level
+# This merges all features that share the same taxonomic assignment into a single feature. Comparing differential abundance analyses using taxa as features vs. using ASVs or OTUs as features can be diagnostic and informative for various analyses.
+
+	
+	
+################
+### TAXONOMY ###
+################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#################
+### DIVERSITY ###
+#################
+
+
+
+
+###################
+### CALCULATION ###
+
+# --i-table - FeatureTable[Frequency|RelativeFrequency|PresenceAbsence]   ### from denoising or from phylogeny filtering? phylogeny/filtered_sepp_dada2_FeatureTable[Frequency].qza OR qiime_analysis/dada2_FeatureTable[Frequency].qza
+
+
+mkdir diversity
+mkdir diversity/alpha
+mkdir diversity/beta
+mkdir diversity/alpha/vis
+mkdir diversity/beta/vis
+mkdir diversity/alpha/stat
+mkdir diversity/beta/stat
+mkdir diversity/beta/stat/rel_freq
+
+### !!! set p--min-depth/max!!!
+ls data_q/*'FeatureTable[Frequency].qza'  | sed 's/FeatureTable\[Frequency\]\.qza//' | sed 's/data_q\///' | \
+parallel --joblog diversity/diversity.log \
+" \
+qiime diversity core-metrics-phylogenetic \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--i-phylogeny phylogeny/sepp_{}Phylogeny[Rooted].qza \
+	--p-sampling-depth $SAMPLING_DEPTH \
+	--m-metadata-file qiime_metadata.tsv \
+	--p-n-jobs-or-threads 3 \
+	--o-rarefied-table diversity/alpha/rarefied_{}FeatureTable[Frequency].qza \
+	--o-observed-features-vector diversity/alpha/of_rarefied_{}SampleData[AlphaDiversity].qza \
+	--o-shannon-vector diversity/alpha/shannon_rarefied_{}SampleData[AlphaDiversity].qza \
+	--o-evenness-vector diversity/alpha/evenness_rarefied_{}SampleData[AlphaDiversity].qza \
+	--o-faith-pd-vector diversity/alpha/faith_rarefied_{}SampleData[AlphaDiversity].qza \
+	--o-jaccard-distance-matrix diversity/beta/jaccard_rarefied_{}DistanceMatrix.qza \
+	--o-jaccard-pcoa-results diversity/beta/jaccard_rarefied_{}PCoAResults.qza \
+	--o-jaccard-emperor diversity/beta/vis/jaccard_rarefied_{}PCoAResults.qzv \
+	--o-bray-curtis-distance-matrix diversity/beta/b-c_rarefied_{}DistanceMatrix.qza \
+	--o-bray-curtis-pcoa-results diversity/beta/b-c_rarefied_{}PCoAResults.qza \
+	--o-bray-curtis-emperor diversity/beta/vis/b-c_rarefied_{}PCoAResults.qzv \
+	--o-unweighted-unifrac-distance-matrix diversity/beta/u_unifrac_rarefied_{}DistanceMatrix.qza \
+	--o-unweighted-unifrac-pcoa-results diversity/beta/u_unifrac_rarefied_{}PCoAResults.qza \
+	--o-unweighted-unifrac-emperor diversity/beta/vis/u_unifrac_rarefied_{}PCoAResults.qzv \
+	--o-weighted-unifrac-distance-matrix diversity/beta/unifrac_rarefied_{}DistanceMatrix.qza \
+	--o-weighted-unifrac-pcoa-results diversity/beta/unifrac_rarefied_{}PCoAResults.qza \
+	--o-weighted-unifrac-emperor diversity/beta/vis/unifrac_rarefied_{}PCoAResults.qzv \
+	--verbose \
+
+
+
+qiime breakaway alpha \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--o-alpha-diversity diversity/alpha/breakaway_{}SampleData[AlphaDiversity].qza \
+
+qiime breakaway plot \
+	--i-alpha-diversity diversity/alpha/breakaway_{}SampleData[AlphaDiversity].qza \
+	--o-visualization diversity/alpha/vis/breakaway_{}SampleData[AlphaDiversity]_better_plot.qzv \
+
+
+
+qiime deicode auto-rpca \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--o-biplot diversity/beta/deicode_{}PCoAResults.qza \
+	--o-distance-matrix diversity/beta/deicode_{}DistanceMatrix.qza
+	
+qiime emperor plot \
+	--i-pcoa diversity/beta/deicode_{}PCoAResults.qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--o-visualization diversity/beta/vis/deicode_{}PCoAResults.qzv \
+	
+	
+qiime diversity alpha-rarefaction \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--i-phylogeny phylogeny/sepp_{}Phylogeny[Rooted].qza \
+	--p-max-depth $MAX_RAREFACTION_DEPTH \
+	--o-visualization diversity/alpha/stat/{}alpha-rarefaction.qzv \
+
+
+qiime feature-table relative-frequency \
+	--i-table data_q/{}FeatureTable[Frequency].qza \
+	--o-relative-frequency-table diversity/beta/stat/rel_freq/{}FeatureTable[RelativeFrequency].qza \
+"
+
+
+ls diversity/beta/*PCoAResults.qza  | sed 's/_PCoAResults\.qza//' | sed 's/diversity\/beta\///' > betas_biplot
+
+parallel --joblog diversity/diversity_beta_stat.log \
+"qiime diversity pcoa-biplot 
+	--i-pcoa diversity/beta/{1}PCoAResults.qza \
+	--i-features {2} \
+	--o-biplot diversity/beta/{1}PCoAResults_biplot.qza"
+
+qiime emperor plot \
+	--i-pcoa diversity/beta/{1}PCoAResults_biplot.qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--o-visualization diversity/beta/vis/{1}PCoAResults_biplot.qzv \
+" :::: betas_stat ::: ls diversity/beta/stat/rel_freq/*'FeatureTable[RelativeFrequency].qza'
+
+
+### CALCULATION ###
+###################
+
+
+
+
+
+
+###################
+### STATISTICS ####
+
+ls diversity/alpha/*'SampleData[AlphaDiversity].qza'  | sed 's/\.qza//' | sed 's/diversity\/alpha\///' | \
+parallel --joblog diversity/diversity_alpha_stat.log \
+"qiime diversity alpha-group-significance \
+	--i-alpha-diversity diversity/alpha/{}.qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--o-visualization diversity/alpha/stat/{}.qzv"
+
+qiime diversity alpha-correlation \
+	--i-alpha-diversity diversity/alpha/{}.qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--o-visualization diversity/alpha/stat/{}.qzv"
+
+
+
+
+
+# Tutaj może trzeba będzie wyrzucić próbkę, żeby był bardziej balanced design. The sample to remove should be most distanced from rest of samples of this group
+
+ls diversity/beta/*DistanceMatrix.qza  | sed 's/_DistanceMatrix\.qza//' | sed 's/diversity\/beta\///' > betas_stat
+
+parallel --joblog diversity/diversity_beta_stat.log \
+"qiime diversity adonis  \
+	--i-distance-matrix diversity/beta/{1}.qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--p-formula group \
+	--o-visualization diversity/beta/stat/{1}.qzv
+
+
+qiime diversity beta-group-significance 
+	--i-distance-matrix diversity/beta/{1}.qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--m-metadata-column \
+	--p-method 'permdisp' \
+	--o-visualization diversity/beta/stat/{1}.qzv \
+" :::: betas_stat :::: metadata_columns_to_analyze
+
+
+### STATISTICS ####
+###################
+
+
+
+emperor procurstes-plot
+
+
+#################
+### DIVERSITY ###
+#################
+
+
+
+
+
+
+#############
+### SCNIC ###
+ls data_q/*'FeatureTable[Frequency].qza'  | sed 's/FeatureTable\[Frequency\]\.qza//' | sed 's/data_q\///' |
+parallel --joblog data_q/scnic.log " \
+
+qiime SCNIC sparcc-filter \
+  --i-table data_q/{}FeatureTable[Frequency].qza \
+  --o-table-filtered data_q/temp/scnic_filt_{}FeatureTable[Frequency].qza \
+  
+qiime SCNIC calculate-correlations \
+  --i-table data_q/temp/scnic_filt_{}FeatureTable[Frequency].qza \
+  --p-method sparcc \
+  --o-correlation-table data_q/temp/corr{}FeatureTable[Frequency].qza \
+
+qiime SCNIC make-modules-on-correlations \
+  --i-correlation-table fake_correls.qza \
+  --i-feature-table fake_data.qza \
+  --p-min-r .35 \
+  --o-collapsed-table fake_data.collapsed.qza \
+  --o-correlation-network fake_net.modules.qza \
+  --o-module-membership fake_membership.qza \
+"\
+
+
+### SCNIC ###
+#############
+
+
+
+
+
+
+
+
+
+### !!! Only filtered data enter here !!! ###
+ls data_q/filtered_*FeatureTable'[Frequency].qza'
+
+mkdir differential
+mkdir differential/vis
+
+https://github.com/LangilleLab/microbiome_helper/wiki/Random-Forest-Tutorial
+qiime feature-table core-features
+
+### Differential abundance ###
+
+Before we begin, we will filter out low abundance/low prevalence ASVs. Filtering can provide better resolution and limit false discovery rate (FDR) penalty on features that are too far below the noise threshhold to be applicable to a statistical test. A feature that shows up with 10 counts may be a real feature that is present only in that sample, may be a feature that’s present in several samples but only got amplified and sequenced in one sample because PCR is a somewhat stochastic process, or it may be noise. It’s not possible to tell, so feature-based analysis may be better after filtering low abundance features. However, filtering also shifts the composition of a sample, further disrupting the relationship. Here, the filtering is performed as a trade off between the model, computational efficiency, and statistical practicality.
+# --i-table - FeatureTable[Frequency] #1
+# --i-table - FeatureTable[Composition] #2
+# --m-metadata-column - MetadataColumn[Categorical]
+
+qiime taxa collapse
+
+qiime composition add-pseudocount \
+	--i-table dada2_FeatureTable[Frequency].qza \
+	--o-composition-table dada2_FeatureTable[Composition].qza
+
+
+qiime composition ancom \
+	--i-table dada2_FeatureTable[Composition].qza \
+	--m-metadata-file qiime_metadata.tsv \
+	--m-metadata-column 'group' \
+	--o-visualization dada2_FeatureTable[Composition].qzv
+
+
+
+qiime composition add-pseudocount
+–i-table ANCOM/rarefied_table.qza
+–o-composition-table ANCOM/ANCOM_ready_table.qza
+
+qiime composition ancom
+–i-table ANCOM/ANCOM_ready_table.qza
+–m-metadata-file ANCOM/metadata.txt
+–m-metadata-column Description1
+–o-visualization ANCOM/ANCOM-Treatment.qzv
+
+qiime feature-table relative-frequency
+–i-table ANCOM/rarefied_table.qza
+–o-relative-frequency-table ANCOM/rarefied_table_relative.qza
+#I think the error might be here but I could be wrong
+
+qiime diversity pcoa-biplot
+–i-pcoa ANCOM/unweighted_unifrac_pcoa_results.qza
+–i-features ANCOM/rarefied_table_relative.qza
+–o-biplot ANCOM/biplot_matrix_unweighted_unifrac.qza
+
+qiime emperor biplot
+–i-biplot ANCOM/biplot_matrix_unweighted_unifrac.qza
+–m-sample-metadata-file ANCOM/metadata.txt
+–m-feature-metadata-file classified_rep_seqs.qza
+–o-visualization ANCOM/unweighted_unifrac_emperor_biplot.qzv
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##############
+### GNEISS ###
+
+### Compositional transformation ###
+# Remember, based on the toy examples given in the beginning of this tutorial, it is not possible to infer absolute changes of microbes in a given sample. Balances will not be able to provide this sort of answer, but it can limit the number of possible scenarios. Specifically, one of the five following scenarios could have happened.
+# --i-table - FeatureTable[Frequency | Composition]
+# --i-tree - Phylogeny[Rooted]
+
+iime gneiss add-pseudocount \
+    --i-table table-dada2-filtered.qza \
+    --p-pseudocount 1 \
+    --o-composition-table composition.qza
+
+qiime gneiss correlation-clustering \
+  --i-table table.qza \
+  --o-clustering hierarchy.qza
+
+qiime gneiss ilr-phylogenetic \
+	--i-table dada2_FeatureTable[Frequency].qza \
+	--i-tree fasttree_Phylogeny[Rooted].qza \
+	--o-balances philr_FeatureTable[Balance].qza \
+	--o-hierarchy hierarchy.qza
+
+qiime gneiss ols-regression \
+    --p-formula "Genotype+Soil+Fraction" \
+    --i-table balances.qza \
+    --i-tree hierarchy.qza \
+    --m-metadata-file /project/microbiome_workshop/amplicon/data/mapping3.txt \
+    --o-visualization regression_summary.qzv
+
+
+
+qiime gneiss dendrogram-heatmap
+
+
+quality-control
+
+### GNEISS ###
+##############
+
+
+
+
+
+sed '/^B1/d' ./qiime_metadata_nf.tsv > B1_metadata
+
+
+
+div_dada2.filter( ~/.*dada2.*/ ).combine(phyl_dada2.filter( ~/.*dada2.*/ ))
+							.concat(div_deblur.filter( ~/.*deblur\..*/ ).combine(phyl_deblur.filter( ~/.*deblur\..*/ )), div_deblur_s.filter( ~/.*deblur_singletons.*/ ).combine(phyl_deblur_s.filter( ~/.*deblur_singletons.*/ )))
+							.flatten()
+							.collate(2)
+
+
+
+
+
+qiime diversity beta-correlation \
+	--i-distance-matrix B1_u_unifrac_rarefied_dada2.ass.qza \
+	--m-metadata-file qiime_metadata_nf.tsv \
+	--m-metadata-column non-heme_fe_faces_mg_fe_kg \
+	--o-metadata-distance-matrix poo-poo.DistanceMatrix.qza \
+	--o-mantel-scatter-visualization poo-poo.DistanceMatrix.qzv
+
+
+
+
+################
+### SONGBIRD ###
+
+qiime songbird multinomial \
+	--i-table redsea.biom.qza \
+	--m-metadata-file data/redsea/redsea_metadata.txt \
+	--p-formula "Depth+Temperature+Salinity+Oxygen+Fluorescence+Nitrate" \
+	--p-epochs 10000 \
+	--p-differential-prior 0.5 \
+	--p-training-column Testing \
+	--p-summary-interval 1 \
+	--o-differentials differentials.qza \
+	--o-regression-stats regression-stats.qza \
+	--o-regression-biplot regression-biplot.qza
+
+qiime songbird summarize-single \
+	--i-regression-stats regression-stats.qza \
+	--o-visualization regression-summary.qzv
+
+
+songbird multinomial \
+	--input-biom data/redsea/redsea.biom \
+	--metadata-file data/redsea/redsea_metadata.txt \
+	--formula "1" \
+	--epochs 10000 \
+	--differential-prior 0.5 \
+	--training-column Testing \
+	--summary-interval 1 \
+	--summary-dir results
+	
+qiime songbird summarize-paired \
+	--i-regression-stats regression-stats.qza \
+	--i-baseline-stats null-stats.qza \
+	--o-visualization paired-summary.qzv
+
+### SONGBIRD ###
+################
+
+
+
+
+
+
+###############
+### CORNCOB ###
+
+qiime corncob differentialtest \
+--i-table table.qza \
+--m-metadata-file metadata.tsv \
+--p-variable ReportedAntibioticUsage \
+--i-taxonomy taxonomy.qza \
+--o-output corncobresults
+
+### CORNCOB ###
+###############
+
+
+qiime tools view
+
+
+
+
+
+
+
+
+
+
+# https://otagoedna.github.io/getting_started_with_qiime2/first_workflow.html
+# https://bioinformaticsworkbook.org/dataAnalysis/Metagenomics/Qiime2.html#gsc.tab=0
+# https://view.qiime2.org/
+# https://docs.qiime2.org/2020.8/data-resources/#marker-gene-reference-databases
+
+
+
+https://forum.qiime2.org/t/how-to-validate-my-results/15858/2
+https://forum.qiime2.org/t/how-to-find-which-phred-my-data-is/16226/2
+
+analyze mock data to see if pipeline is ok!
+
+https://forum.qiime2.org/t/normalization-necessary-when-converting-to-relative-frequencies/1669
+https://forum.qiime2.org/t/downloading-files-from-qiita-to-import-into-qiime2-q-about-generating-rep-seqs-qza/1421
+
+When using this manifest format, a sample name can only appear in one line and can only map to one sequencing file per column (one column for single-end, two columns for paired-end). The absolute-filepath for each sample must be an absolute path, which specifies the “complete” location of the file. We do that here using the $PWD variable, which expands the current directory in absolute terms.
