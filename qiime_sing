@@ -1,0 +1,40 @@
+# sudo singularity build qiime_sing.img qiime_singularity_2 ### this recipe name ###
+# singularity shell --bind data:/tmp --cleanenv --writable-tmpfs qiime_sing.img
+# source source /opt/conda/etc/profile.d/conda.sh 
+
+#Working folders need to be structured as such: 
+	#Create directory which will be bound with singularity on the /tmp level (call it "Bind", --bind ./Bind:/tmp). This will take care of problem of temporary files being written in singularity-based /tmp folder that would not have access to disk space otherwise.
+	#Create directory inside the Bind directory, which will hold entire analysis (call it "Analysis")
+	#After these steps, in a single directory we will have .simg container file and Bind/Analysis directory. 
+	#The Bind/Analysis directory must contain:
+	#1) data folder containing files to be analyzed (best .cov format, .gz packed) and sample sheet
+	#2) R workflow files
+
+
+
+BootStrap: docker
+From: qiime2/core:2020.8
+
+	
+	
+%environment
+	export SHELL=/usr/bin/bash
+	export LC_ALL=C.UTF-8
+	export LANG=C.UTF-8
+	export PATH=$PATH:/root
+	
+	
+	
+%post
+	apt update
+	curl -s https://get.nextflow.io | bash
+	apt install -y parallel
+	
+	conda install -y -c conda-forge deicode
+	conda install -y -c kaehler -c conda-forge q2-clawback
+	conda install -y -c conda-forge qurro
+	
+	conda install -y -c bioconda -c conda-forge bioconductor-phyloseq r-devtools r-tibble r-magrittr r-dplyr r-withr r-testthat r-praise unzip
+	pip install git+https://github.com/statdivlab/q2-breakaway.git
+	R -e 'Sys.setenv(TAR = "/bin/tar"); library(devtools); devtools::install_github("adw96/breakaway")' 
+	qiime dev refresh-cache
