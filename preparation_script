@@ -1,0 +1,123 @@
+mkdir prepare_taxonomy
+mkdir prepare_taxonomy/temp
+
+THREADS=20
+
+##########################
+### GET SEPP REFERENCE ###
+
+mkdir phylogeny
+cd phylogeny
+curl -o sepp-refs-silva-128.qza https://s3-us-west-2.amazonaws.com/qiime2-data/2020.11/common/sepp-refs-silva-128.qza
+cd ..
+
+### GET SEPP REFERENCE ###
+##########################
+
+
+
+
+
+
+##################################
+### DATABASE INCLUDING SPECIES ###
+
+qiime rescript get-silva-data \
+	--p-version '138.1' \
+	--p-target 'SSURef_NR99' \
+	--p-include-species-labels \
+	--o-silva-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs.qza \
+	--o-silva-taxonomy prepare_taxonomy/temp/silva-138.1-ssu-nr99-tax.qza
+
+
+qiime rescript cull-seqs \
+	--i-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs.qza \
+	--p-n-jobs $THREADS \
+	--o-clean-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-cleaned.qza
+
+
+qiime rescript filter-seqs-length-by-taxon \
+	--i-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-cleaned.qza \
+	--i-taxonomy prepare_taxonomy/temp/silva-138.1-ssu-nr99-tax.qza \
+	--p-labels Archaea Bacteria Eukaryota \
+	--p-min-lens 900 1200 1400 \
+	--o-filtered-seqs prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-filt.qza \
+	--o-discarded-seqs prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-discard.qza
+	
+	
+qiime rescript dereplicate \
+	--i-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-filt.qza  \
+	--i-taxa prepare_taxonomy/temp/silva-138.1-ssu-nr99-tax.qza \
+	--p-rank-handles 'silva' \
+	--p-mode 'uniq' \
+	--p-threads $THREADS \
+	--o-dereplicated-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-derep-uniq.qza \
+	--o-dereplicated-taxa prepare_taxonomy/temp/silva-138.1-ssu-nr99-tax-derep-uniq.qza
+
+
+qiime feature-classifier extract-reads \
+	--i-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-derep-uniq.qza \
+	--p-f-primer CCTACGGGNGGCWGCAG \
+	--p-r-primer GACTACHVGGGTATCTAATCC \
+	--p-n-jobs $THREADS \
+	--p-read-orientation 'forward' \
+	--o-reads prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-341f-785r.qza
+
+
+qiime rescript dereplicate \
+	--i-sequences prepare_taxonomy/temp/silva-138.1-ssu-nr99-seqs-341f-785r.qza \
+	--i-taxa prepare_taxonomy/temp/silva-138.1-ssu-nr99-tax-derep-uniq.qza \
+	--p-rank-handles 'silva' \
+	--p-mode 'uniq' \
+	--p-threads $THREADS \
+	--o-dereplicated-sequences prepare_taxonomy/silva-138.1-ssu-nr99-seqs-341f-785r-derep-uniq.qza \
+	--o-dereplicated-taxa prepare_taxonomy/silva-138.1-ssu-nr99-tax-341f-785r-derep-uniq.qza
+
+### DATABASE INCLUDING SPECIES ###
+##################################
+
+
+
+
+
+
+##############################
+### CREATE BESPOKE WEIGHTS ###
+
+#qiime clawback summarize-Qiita-metadata-category-and-contexts \
+#	--p-category empo_3 \
+#	--o-visualization available_empo3.qzv
+
+
+#qiime feature-classifier fit-classifier-naive-bayes \
+#	--i-reference-reads prepare_taxonomy/silva-138.1-ssu-nr99-seqs-341f-785r-derep-uniq.qza \
+#	--i-reference-taxonomy prepare_taxonomy/silva-138.1-ssu-nr99-tax-341f-785r-derep-uniq.qza \
+#	--o-classifier prepare_taxonomy/temp/341f-785r-uniform_classifier.qza \
+#	--verbose
+
+
+#qiime clawback assemble-weights-from-Qiita \
+#	--i-classifier prepare_taxonomy/temp/341f-785r-uniform_classifier.qza \
+#	--i-reference-sequences prepare_taxonomy/silva-138.1-ssu-nr99-seqs-341f-785r-derep-uniq.qza \
+#	--i-reference-taxonomy prepare_taxonomy/silva-138.1-ssu-nr99-tax-341f-785r-derep-uniq.qza \
+#	--p-metadata-key empo_3 \
+#	--p-metadata-value "Animal distal gut" \
+#	--p-context Deblur-Illumina-16S-V34-150nt-780653 \
+#	--o-class-weight prepare_taxonomy/Animal_distal_gut_Deblur-Illumina-16S-V34-150nt.qza
+	
+	
+#qiime feature-classifier fit-classifier-naive-bayes \
+#	--i-reference-reads prepare_taxonomy/silva-138.1-ssu-nr99-seqs-341f-785r-derep-uniq.qza \
+#	--i-reference-taxonomy prepare_taxonomy/silva-138.1-ssu-nr99-tax-341f-785r-derep-uniq.qza \
+#	--i-class-weight prepare_taxonomy/Animal_distal_gut_Deblur-Illumina-16S-V34-150nt.qza \
+#	--o-classifier prepare_taxonomy/gut-341f-785r-classifier.qza
+
+# UserWarning: The TaxonomicClassifier artifact that results from this method was trained using scikit-learn version 0.23.1. It cannot be used with other versions of scikit-learn. (While the classifier may complete successfully, the results will be unreliable.)
+
+### CREATE BESPOKE WEIGHTS ###	
+##############################	
+
+
+
+
+
