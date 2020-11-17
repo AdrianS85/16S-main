@@ -1,7 +1,5 @@
 // nextflow run -with-report nextflow_report/report.log -with-trace nextflow_report/trace.log -with-timeline nextflow_report/timeline.log -with-dag nextflow_report/flowchart.png -name test2 nextflow_script
-// nextflow run nextflow_script -with-report nextflow_report/report.log -with-trace nextflow_report/trace.log -with-timeline nextflow_report/timeline.log -resume
-
-
+// // nextflow run nextflow_script -with-report nextflow_report/report -with-trace nextflow_report/trace -with-timeline nextflow_report/timeline -resume
 
 DIR_data_q = 'nx_data_q'
 DIR_data_q_vis = 'nx_data_q/vis'
