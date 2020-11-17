@@ -1,5 +1,8 @@
-// nextflow run -with-report nextflow_report/report.log -with-trace nextflow_report/trace.log -with-timeline nextflow_report/timeline.log -with-dag nextflow_report/flowchart.png -name test2 nextflow_script
+// nextflow run -with-report nextflow_report/report.log -with-trace nextflow_report/trace.log -with-timeline nextflow_report/timeline.log -with-dag nextflow_report/flowchart.png -name test nextflow_script
 // nextflow run nextflow_script -with-report nextflow_report/report -with-trace nextflow_report/trace -with-timeline nextflow_report/timeline -resume
+// run pre_nextflow_script.sh
+
+
 
 DIR_data_q = 'nx_data_q'
 DIR_data_q_vis = 'nx_data_q/vis'
@@ -40,7 +43,7 @@ import_fastq_data_type = 'SampleData[PairedEndSequencesWithQuality]'
 import_fastq_format = 'PairedEndFastqManifestPhred33V2'
 import_fastq_cores = 25
 
-deblur_prep_cores = 8
+deblur_prep_cores = 15
 deblur_prep_minovlen = 110
 deblur_prep_maxdiffs = 20
 
@@ -48,22 +51,22 @@ dada2_trim_f = 17
 dada2_trim_r = 21
 dada2_trunc_f = 268
 dada2_trunc_r = 218
-dada2_threads = 8
+dada2_threads = 15
 
 deblur_prep_front_f = 'CCTACGGGNGGCWGCAG'
 deblur_prep_front_r = 'GACTACHVGGGTATCTAATCC'
 deblur_prep_adapter_f = 'GGATTAGATACCCBDGTAGTC'
 deblur_prep_adapter_r = 'CTGCWGCCNCCCGTAGG'
-deblur_jobs = 8
+deblur_jobs = 15
 deblur_trim_length = 401
 
 phylogeny_file = file('phylogeny/sepp-refs-silva-128.qza')
-phylogeny_threads = 8
+phylogeny_threads = 10
 
 taxonomy_ref_reads = file('prepare_taxonomy/silva-138.1-ssu-nr99-seqs-341f-785r-derep-uniq.qza')
 taxonomy_ref_tax = file('prepare_taxonomy/silva-138.1-ssu-nr99-tax-341f-785r-derep-uniq.qza')
 taxonomy_weight = file('prepare_taxonomy/gut-341f-785r-classifier.qza')
-taxonomy_threads = 5
+taxonomy_threads = 3
 
 filtering_min_frequency = 2 //10
 filtering_min_samples = 2 //11
@@ -71,7 +74,7 @@ filtering_min_samples = 2 //11
 diversity_comp_depth = 1000 //
 
 diversity_std_sampling_depth = 1000 //
-diversity_std_threads = 5
+diversity_std_threads = 2
 
 
 
@@ -120,10 +123,11 @@ process metadata_vis {
 
 
 process import_fastq {
+
+	cpus import_fastq_cores
+	
 	publishDir path: DIR_data_q, mode: 'copy', pattern: '*qza'
 	publishDir path: DIR_data_q_vis, mode: 'copy', pattern: '*qzv'
-	
-	cpus import_fastq_cores
 	
 	input:
 		file import_fastq_manifest
@@ -164,11 +168,12 @@ process import_fastq {
 	
 //In trim-paired read 2 znajduje zawsze oba adaptery. wierd. Może spróbować obniżyć max error to 1 - --p-error-rate 0.05? 
 process deblur_prep {
+
+	cpus deblur_prep_cores
+
 	publishDir path: DIR_data_q_temp, mode: 'copy', pattern: '*qza'
 	publishDir path: DIR_data_q_vis, mode: 'copy', pattern: '{*log,*qzv}'
 	
-	cpus deblur_prep_cores
-
 	input:
 		file primary_input from import_fastq_out
 	output:
@@ -237,11 +242,12 @@ process deblur_prep {
 
 
 process deblur {
+
+	cpus deblur_jobs
+
 	publishDir path: DIR_data_q, mode: 'copy', pattern: '*Feature*'
 	publishDir path: DIR_data_q_temp, mode: 'copy', pattern: '*DeblurStats.qza'
 	publishDir path: DIR_data_q_vis, mode: 'copy', pattern: '*qzv'
-	
-	cpus deblur_jobs
 	
 	input:
 		file deblur_prep_out
@@ -309,11 +315,12 @@ process deblur {
 
 
 process dada2 {
+
+	cpus dada2_threads
+
 	publishDir path: DIR_data_q, mode: 'copy', pattern: '*Feature*'
 	publishDir path: DIR_data_q_temp, mode: 'copy', pattern: '*DADA2Stats.qza'
 	publishDir path: DIR_data_q_vis, mode: 'copy', pattern: '*qzv'
-	
-	cpus dada2_threads
 
 	input:
 		file primary_input from import_fastq_out
@@ -364,11 +371,12 @@ process dada2 {
 
 //dada2_for_sepp.concat(deblur_for_sepp).flatten().toSortedList( { a, b -> a.simpleName <=> b.simpleName } ).flatten().collate(2).view()
 process phylogeny {
+
+	cpus phylogeny_threads
+
 	publishDir path: DIR_phyl, mode: 'copy', pattern: '{*PhylogenyRooted.qza,*Placements.qza}'
 	publishDir path: DIR_data_q, mode: 'copy', pattern: 'sepp*Feature*'
 	publishDir path: DIR_data_q_temp, mode: 'copy', pattern: 'removed_sepp_*'
-	
-	cpus phylogeny_threads
 	
 	input:
 		tuple file(seq), file(freq) from dada2_for_sepp.concat(deblur_for_sepp).flatten().toSortedList( { a, b -> a.simpleName <=> b.simpleName } ).flatten().collate(2)
@@ -492,11 +500,12 @@ qiime taxa collapse \
 	--o-collapsed-table taxonomy/collapse/'lev_'{}'_bespoke_nb_${freq.simpleName}.FeatureTableFrequency.qza 
 */
 process taxonomy {
+
+	cpus taxonomy_threads
+
 	publishDir path: DIR_tax, mode: 'copy', pattern: '*Taxonomy.qza'
 	publishDir path: DIR_tax_vis, mode: 'copy', pattern: '*Taxonomy.qzv'
 	publishDir path: DIR_data_q, mode: 'copy', pattern: 'lev_*Frequency.qza'
-	
-	cpus taxonomy_threads
 	
 	input:
 		tuple file(seq), file(freq) from filt_for_tax
@@ -539,9 +548,10 @@ qiime feature-classifier classify-sklearn \
 */
 //I think that collect is responsible for "waiting" for all processes to finish
 process taxonomy_for_divnet {
-	publishDir path: DIR_tax, mode: 'copy', pattern: '*Taxonomy.qza'
-	
+
 	cpus taxonomy_threads
+
+	publishDir path: DIR_tax, mode: 'copy', pattern: '*Taxonomy.qza'
 	
 	input:
 		file seq from dada2_for_divnet.concat(deblur_for_divnet).collect().flatten().filter( ~/.*Sequence.*/)
@@ -587,8 +597,6 @@ process taxonomy_for_divnet {
 process qa_f {
 	publishDir path: DIR_data_q_vis_freq, mode: 'copy'
 	
-	cpus 
-	
 	input:
 		
 		file freq from deblur_for_qa_f.concat(dada2_for_qa_f, sepp_for_qa_f, filt_for_qa_f, tax_for_qa_f, tax_divnet_for_qa_f)
@@ -609,8 +617,6 @@ process qa_f {
 
 process qa_s {
 	publishDir path: DIR_data_q_vis_freq, mode: 'copy'
-	
-	cpus 
 	
 	input:
 	
@@ -671,8 +677,6 @@ process diversity_comp {
 	publishDir path: DIR_div_beta_pcoa_vis, mode: 'copy', pattern: '*PCoAResults.qzv'
 	publishDir path: DIR_div_beta_pcoa_bp_vis, mode: 'copy', pattern: '*PCoAResults_biplot.qzv'
 	publishDir path: DIR_div_temp, mode: 'copy', pattern: '*FeatureTableRelativeFrequency.qza'
-	
-	cpus 
 	
 	input:
 		file freq from dada2_for_break.concat(deblur_for_break).collect().flatten().filter( ~/.*Frequency.*/ )
@@ -745,8 +749,6 @@ process diversity_comp {
 
 // This is so that all inputs are coordinated. If done from outside the process, only first function that is ready will create channel
 process generate_chan_for_diversity_std_freq {
-
-	cpus 
 	
 	input:
 		file freq from deblur_for_div.concat(dada2_for_div, sepp_for_div, filt_for_div).collect().flatten().filter( ~/.*Frequency.*/ )
@@ -805,8 +807,6 @@ process diversity_std {
 	publishDir path: DIR_div_beta_pcoa_vis, mode: 'copy', pattern: '*PCoAResults.qzv'
 	publishDir path: DIR_div_beta_pcoa_bp_vis, mode: 'copy', pattern: '*PCoAResults_biplot.qzv'
 	publishDir path: DIR_div_temp, mode: 'copy', pattern: '{rarefied_*FeatureTableFrequency.qza,*FeatureTableRelativeFrequency.qza}'
-	
-	cpus diversity_std_threads
 	
 	input:
 		tuple file(freq), file(phyl) from div_dada2.filter( ~/.*dada2.*/ ).combine(phyl_dada2.filter( ~/.*dada2.*/ )).concat(div_deblur.filter( ~/.*deblur\..*/ ).combine(phyl_deblur.filter( ~/.*deblur\..*/ )), div_deblur_s.filter( ~/.*deblur_singletons.*/ ).combine(phyl_deblur_s.filter( ~/.*deblur_singletons.*/ ))).flatten().collate(2)
@@ -904,8 +904,6 @@ process diversity_tax {
 	publishDir path: DIR_div_beta_pcoa_vis, mode: 'copy', pattern: '*PCoAResults.qzv'
 	publishDir path: DIR_div_beta_pcoa_bp_vis, mode: 'copy', pattern: '*PCoAResults_biplot.qzv'
 	publishDir path: DIR_div_temp, mode: 'copy', pattern: '{rarefied_*FeatureTableFrequency.qza,*FeatureTableRelativeFrequency.qza}'
-	
-	cpus diversity_std_threads
 	
 	input:
 		file freq_tax from tax_for_div.collect().flatten()
@@ -1076,8 +1074,6 @@ process beta_stat {
 	publishDir path: DIR_div_beta_stat_adonis, mode: 'copy', pattern: '*adonis*'
 	publishDir path: DIR_div_beta_stat_permdisp, mode: 'copy', pattern: '*permdisp*'
 	publishDir path: DIR_div_beta_stat_corr, mode: 'copy', pattern: 'corr_*qzv'
-	
-	cpus 
 	
 	input:
 		file dist from dist_comp.concat(dist_std, dist_tax).collect().flatten()
