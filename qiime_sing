@@ -1,6 +1,6 @@
 # sudo singularity build qiime_sing.img qiime_sing ### this recipe name ###
 # sudo singularity shell --bind data:/tmp --cleanenv --writable-tmpfs qiime_sing.img
-# source source /opt/conda/etc/profile.d/conda.sh 
+# cd /tmp
 
 # Working folders need to be structured as such: 
 	# Create directory which will be bound with singularity on the /tmp level (call it "Bind", --bind ./Bind:/tmp). This will take care of problem of temporary files being written in singularity-based /tmp folder that would not have access to disk space otherwise.
