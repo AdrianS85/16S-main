@@ -1,4 +1,4 @@
-// nextflow run -with-report nextflow_report/report.log -with-trace nextflow_report/trace.log -with-timeline nextflow_report/timeline.log -with-dag nextflow_report/flowchart.png -name test nextflow_script
+// nextflow run -with-report nextflow_report/report.log -with-trace nextflow_report/trace.log -with-timeline nextflow_report/timeline.log -with-dag nextflow_report/flowchart.png -name analysis_step_by_step nextflow_script
 // nextflow run nextflow_script -with-report nextflow_report/report -with-trace nextflow_report/trace -with-timeline nextflow_report/timeline -resume
 // run pre_nextflow_script.sh
 
@@ -33,17 +33,17 @@ DIR_div_temp = 'nx_diversity/temp'
 	
 
 
-METADATA = file('qiime_metadata_nf.tsv')
-NB_OF_SAMPLES = 34
-SAMPLING_DEPTH = 58020
+METADATA = file('metadata_enhanced.tsv')
+NB_OF_SAMPLES = 33
+SAMPLING_DEPTH = 1
 MAX_RAREFACTION_DEPTH = 100000
 
-import_fastq_manifest = file('qiime_manifest_short_nf.tsv')
+import_fastq_manifest = file('qiime_manifest.tsv')
 import_fastq_data_type = 'SampleData[PairedEndSequencesWithQuality]'
 import_fastq_format = 'PairedEndFastqManifestPhred33V2'
 import_fastq_cores = 25
 
-deblur_prep_cores = 15
+deblur_prep_cores = 8
 deblur_prep_minovlen = 110
 deblur_prep_maxdiffs = 20
 
@@ -61,22 +61,18 @@ deblur_jobs = 15
 deblur_trim_length = 401
 
 phylogeny_file = file('phylogeny/sepp-refs-silva-128.qza')
-phylogeny_threads = 10
+phylogeny_threads = 15
 
 taxonomy_ref_reads = file('prepare_taxonomy/silva-138.1-ssu-nr99-seqs-341f-785r-derep-uniq.qza')
 taxonomy_ref_tax = file('prepare_taxonomy/silva-138.1-ssu-nr99-tax-341f-785r-derep-uniq.qza')
 taxonomy_weight = file('prepare_taxonomy/gut-341f-785r-classifier.qza')
 taxonomy_threads = 3
 
-filtering_min_frequency = 2 //10
-filtering_min_samples = 2 //11
+filtering_min_frequency = 10
+filtering_min_samples = 11
 
-diversity_comp_depth = 1000 //
-
-diversity_std_sampling_depth = 1000 //
+diversity_std_sampling_depth = 24267 // This is the value of lowest sample in deblur. could be specified for each sample type individually, but why bother.
 diversity_std_threads = 2
-
-
 
 
 
@@ -270,23 +266,6 @@ process deblur {
 			--o-stats deblur.SampleDataDeblurStats.qza
 
 		qiime deblur visualize-stats --i-deblur-stats deblur.SampleDataDeblurStats.qza --o-visualization deblur.SampleDataDeblurStats.qzv
-
-
-
-		qiime deblur denoise-16S \
-			--i-demultiplexed-seqs ${deblur_prep_out} \
-			--p-min-reads 1 \
-			--p-min-size 1 \
-			--p-trim-length ${deblur_trim_length} \
-			--p-left-trim-len 0 \
-			--p-sample-stats True \
-			--p-jobs-to-start ${deblur_jobs} \
-			--p-no-hashed-feature-ids \
-			--o-table deblur_singletons.FeatureTableFrequency.qza \
-			--o-representative-sequences deblur_singletons.FeatureDataSequence.qza \
-			--o-stats deblur_singletons.SampleDataDeblurStats.qza
-			
-		qiime deblur visualize-stats --i-deblur-stats deblur_singletons.SampleDataDeblurStats.qza --o-visualization deblur_singletons.SampleDataDeblurStats.qzv
 		"""}
 
 
@@ -310,7 +289,7 @@ process deblur {
 
 
 
-
+// Sample F5 (low-read) doesnt pass filter well in dada2 - according to fastqc - its phred scores are poorer than those of other samples. It must be removed after all.
 
 
 
@@ -616,7 +595,7 @@ process qa_f {
 
 
 process qa_s {
-	publishDir path: DIR_data_q_vis_freq, mode: 'copy'
+	publishDir path: DIR_data_q_vis_seq, mode: 'copy'
 	
 	input:
 	
@@ -1035,7 +1014,8 @@ process alpha_stat {
 
 
 
-
+//--p-where "[sampleid] IN ('B1', 'B6', 'C5', 'C6', 'D5', 'E3', 'E5', 'F6', 'G6')"
+// "[sampleid]='B1' OR [sampleid]='B6' OR [sampleid]='C5' OR [sampleid]='C6' OR [sampleid]='D5' OR [sampleid]='E3' OR [sampleid]='E5' OR [sampleid]='F6' OR [sampleid]='G6'"
 
 
 
@@ -1046,7 +1026,7 @@ adonis_formula = 'group mother anemia_v_treatment group*mother anemia_v_treatmen
 
 adonis_name_crooked1 = 'dex_muscle_v_treatment'
 adonis_sed_crooked1 = '/^A[0-9]/d'
-adonis_samples_crooked1 = "'A1', 'A2', 'A3'"
+adonis_samples_crooked1 = "'A1', 'A2', 'A3', 'A4', 'A5'"
 adonis_formulas_crooked1 = 'dex_muscle_v_treatment dex_muscle_v_treatment*mother'
 
 
@@ -1059,8 +1039,8 @@ beta_corr_col = "non_heme_fe_liver_mg_fe_kg plt_k_ul plasma_iron_ug_dl rbc_quant
 
 beta_corr_name_crooked1 = "non_heme_fe_faces_mg_fe_kg"
 beta_corr_col_crooked1 = "non_heme_fe_faces_mg_fe_kg"
-beta_corr_sed_crooked1 = '/^B1/d'
-beta_corr_samples_crooked1 = "'B1', 'B6', 'C5', 'C6', 'D5', 'E3', 'E5', 'F6'"
+beta_corr_sed_crooked1 = '/^B1|^B6|^C5|^C6|^D5|^E3|^E5|^F6|^G6'
+beta_corr_samples_crooked1 = "'B1', 'B6', 'C5', 'C6', 'D5', 'E3', 'E5', 'F6', 'G6'"
 
 beta_corr_name_crooked2 = "A1"
 beta_corr_col_crooked2 = "ret_k_ul ret_he_pg rbc_morphology_z_score"
@@ -1091,7 +1071,7 @@ process beta_stat {
 		" ::: ${adonis_formula}
 		
 		
-		
+
 		qiime diversity filter-distance-matrix \
 			--i-distance-matrix ${dist} \
 			--m-metadata-file ${METADATA} \
