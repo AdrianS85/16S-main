@@ -1039,7 +1039,7 @@ beta_corr_col = "non_heme_fe_liver_mg_fe_kg plt_k_ul plasma_iron_ug_dl rbc_quant
 
 beta_corr_name_crooked1 = "non_heme_fe_faces_mg_fe_kg"
 beta_corr_col_crooked1 = "non_heme_fe_faces_mg_fe_kg"
-beta_corr_sed_crooked1 = '/^B1|^B6|^C5|^C6|^D5|^E3|^E5|^F6|^G6'
+beta_corr_sed_crooked1 = '/^B1|^B6|^C5|^C6|^D5|^E3|^E5|^F6|^G6/d'
 beta_corr_samples_crooked1 = "'B1', 'B6', 'C5', 'C6', 'D5', 'E3', 'E5', 'F6', 'G6'"
 
 beta_corr_name_crooked2 = "A1"
