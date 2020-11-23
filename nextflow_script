@@ -1,8 +1,6 @@
-// nextflow run -with-report nextflow_report/report.log -with-trace nextflow_report/trace.log -with-timeline nextflow_report/timeline.log -with-dag nextflow_report/flowchart.png -name analysis_step_by_step nextflow_script
+// nextflow run -with-report nextflow_report/report -with-trace nextflow_report/trace -with-timeline nextflow_report/timeline -with-dag nextflow_report/flowchart -name analysis_step_by_step nextflow_script
 // nextflow run nextflow_script -with-report nextflow_report/report -with-trace nextflow_report/trace -with-timeline nextflow_report/timeline -resume
 // run pre_nextflow_script.sh
-
-
 
 DIR_data_q = 'nx_data_q'
 DIR_data_q_vis = 'nx_data_q/vis'
@@ -363,7 +361,7 @@ process phylogeny {
 	output:
 		file "sepp_*PhylogenyRooted.qza" into (phylogeny_for_div)
 		file "sepp_*Placements.qza"
-		tuple file("sepp_*FeatureDataSequence.qza"), file("sepp_*FeatureTableFrequency.qza") into (sepp_for_filt, sepp_for_qa, sepp_for_qa_f, sepp_for_qa_s, sepp_for_div)
+		tuple file("sepp_*FeatureDataSequence.qza"), file("sepp_*FeatureTableFrequency.qza") into (sepp_for_filt, sepp_for_qa_f, sepp_for_qa_s, sepp_for_div)
 		file "removed_sepp_*FeatureTableFrequency.qza"
 
 		"""
@@ -490,9 +488,9 @@ process taxonomy {
 		tuple file(seq), file(freq) from filt_for_tax
 
 	output:
-		file "*FeatureDataTaxonomy.qza" into phyl_freq
+		file "*FeatureDataTaxonomy.qza"
 		file "*FeatureDataTaxonomy.qzv"
-		file "*FeatureTableFrequency.qza" into (tax_for_qa_f, tax_for_corn, tax_for_div)
+		file "*FeatureTableFrequency.qza" into (tax_for_qa_f, tax_for_div)
 
 		"""
 		qiime feature-classifier classify-consensus-vsearch \
@@ -733,7 +731,7 @@ process generate_chan_for_diversity_std_freq {
 		file freq from deblur_for_div.concat(dada2_for_div, sepp_for_div, filt_for_div).collect().flatten().filter( ~/.*Frequency.*/ )
 
 	output:
-		file "tmp_*FeatureTableFrequency.qza" into (div_dada2, div_deblur, div_deblur_s)
+		file "tmp_*FeatureTableFrequency.qza" into (div_dada2, div_deblur)
 
 		"""
 		cp ${freq} tmp_${freq}
@@ -747,7 +745,7 @@ process generate_chan_for_diversity_std_phyl {
 		file phyl from phylogeny_for_div
 		
 	output:
-		file "tmp_*PhylogenyRooted.qza" into (phyl_dada2, phyl_deblur, phyl_deblur_s)
+		file "tmp_*PhylogenyRooted.qza" into (phyl_dada2, phyl_deblur)
 	
 		"""
 		cp ${phyl} tmp_${phyl}
@@ -788,7 +786,7 @@ process diversity_std {
 	publishDir path: DIR_div_temp, mode: 'copy', pattern: '{rarefied_*FeatureTableFrequency.qza,*FeatureTableRelativeFrequency.qza}'
 	
 	input:
-		tuple file(freq), file(phyl) from div_dada2.filter( ~/.*dada2.*/ ).combine(phyl_dada2.filter( ~/.*dada2.*/ )).concat(div_deblur.filter( ~/.*deblur\..*/ ).combine(phyl_deblur.filter( ~/.*deblur\..*/ )), div_deblur_s.filter( ~/.*deblur_singletons.*/ ).combine(phyl_deblur_s.filter( ~/.*deblur_singletons.*/ ))).flatten().collate(2)
+		tuple file(freq), file(phyl) from div_dada2.filter( ~/.*dada2.*/ ).combine(phyl_dada2.filter( ~/.*dada2.*/ )).concat(div_deblur.filter( ~/.*deblur\..*/ ).combine(phyl_deblur.filter( ~/.*deblur\..*/ ))).flatten().collate(2)
 
 	output:
 		file '*SampleDataAlphaDiversity.qza' into alpha_std
