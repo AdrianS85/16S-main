@@ -1020,7 +1020,7 @@ process alpha_stat {
 
 //dist_comp.concat(dist_std, dist_tax).collect().flatten()
 
-adonis_formula = 'group mother anemia_v_treatment group*mother anemia_v_treatment*mother'
+adonis_formula = 'group mother anemia_v_treatment mother*group mother*anemia_v_treatment'
 
 adonis_name_crooked1 = 'dex_muscle_v_treatment'
 adonis_sed_crooked1 = "'/^A[0-9]/d'"
